@@ -25,18 +25,18 @@ def strain_signal(F_1,F_2,h_1,h_2):
 
 #----------------------------------------------#
 #Mass
-mu,M_tot,M_,K = binarymass(10**5,1)#Mass parameters
+mu,M_tot,M_,K = binarymass(10,1)#Mass parameters
 
 #Distance and angle
 r = (3.086*10**(22)) * (10**3.0)#in m; () in Mega Parsec
 iota = np.pi/2#Angle in radian between orbital plane(through y-axis) and z axis
-A = (4 * (K)**(5/3))/r#Include the cosmo redshift effect [A] = (LT^-1)^2/3
+A = (4 * (K)**(5/3))/r#Does not Include the cosmo redshift effect [A] = (LT^-1)^2/3
 
-#time
-T,step = np.linspace(0,60,10000, retstep=True)#duration and timse interval in seconds
-t = T-3600#-1*(10**7) #Looking at an interval of T at t[0]. 
+#----time--
+T,step = np.linspace(0,60,100000, retstep=True)#duration and timse interval in seconds
+t = T -10*(10**7) #Looking at an interval of T at t[0]. 
 
-tc = max(t)+step#tc = 0 coalescence at t=0. Then looking at time interval T, t[0] time before tc(coalescence)
+tc = 0#max(t)+step#tc = 0 coalescence at t=0. Then looking at time interval T, t[0] time before tc(coalescence)
 
 #Frequency and phase
 theta =  (mu/M_tot)*((c**3)/(5*G*M_tot))*(tc - t)
@@ -50,18 +50,18 @@ phi = phi_0*(tc-t) + phi_c
 #2PN phi
 Phi2 = phi_c - (1/(mu/M_tot))*(theta**(5/8) + (3715/8064 + (mu/M_tot)*55/96)*(theta**(3/8)) - 3*np.pi/4 *theta**(1/4)*(9275495/14450688 + 284875/258048*(mu/M_tot) + (mu/M_tot)*(mu/M_tot)*1855/2048)*theta**(1/8))
 f2 = ((c**3)/(8*np.pi*G*M_tot))*(theta**(-3/8) + (743/2688 + 11/32*(mu/M_tot))*theta**(-5/8) - 3*np.pi/10*theta**(-3/4) + (1855099/14450688 + (mu/M_tot)*56975/258048 + 371/2048*((mu/M_tot)**2))*theta**(-7/8))
+
+
+#Polarizatio(mu/M_tot)s
+h_plus = A*((np.pi*f/c)**(2/3))*np.cos(phi)*((1+np.cos(iota)**2)/2)
+h_x = A*((np.pi*f/c)**(2/3))*np.sin(phi)*np.cos(iota)
+
 '''
 #2PN
 #Shows error because f2 and Phi2 become negative hence power 2/3 leads to complex values of h_()
 h2pn_plus = A*((np.pi*f2/c)**(2/3))*np.cos(Phi2)*((1+np.cos(iota)**2)/2)
 h2pn_x = A*((np.pi*f2/c)**(2/3))*np.sin(Phi2)*np.cos(iota)
 '''
-
-#Polarizatio(mu/M_tot)s
-h_plus = A*((np.pi*f/c)**(2/3))*np.cos(phi)*((1+np.cos(iota)**2)/2)
-h_x = A*((np.pi*f/c)**(2/3))*np.sin(phi)*np.cos(iota)
-
-
 #Beam Pattern
 F_plus,F_x = BeamPatternFunc(0,0,0)#At zenith 
 
@@ -84,7 +84,29 @@ plt.xlabel('Time in sec')
 plt.ylabel('Frequency in Hz')
 #plt.plot(t,h_x,'r')
 plt.title("Gravitational Wave Polarizations")
-plt.show(block = False)#Can use idle simultaneously
+if(abs(max(f)/min(f))<10):
+    plt.yticks(np.linspace(min(f),max(f),5))
+#plt.show(block = False)#Can use idle simultaneously
+
+#----radius and angle---
+fig3 = plt.figure()
+r_0 = (G*M_tot/(2*np.pi*f[0])**2)**(1/3)
+angle_0 = 0
+angle,r = np.zeros(len(t)),np.zeros(len(t))
+angle[0],r[0]=angle_0,r_0
+for n in range(1,len(t)):
+	angle[n] = angle[n-1] + step*2*np.pi*f[n]
+	r[n] = (G*M_tot/(2*np.pi*f[n])**2)**(1/3)#Can actually do this directly without loop
+r_scale = r/r[0]
+plt.polar(angle,r)
+
+#--- rough
+ang = np.arange(0,2*np.pi,np.pi/6)
+r_isco = 2*6*G*M_tot/(c*c)
+risc = [r_isco for i in ang]
+plt.polar(ang,risc,'--')
+#---
+plt.show(block = False)
 
 
 """
@@ -94,4 +116,5 @@ choosing such that the collision happens at t=0 and we are ooking at few weeks b
 3.154*10**7 sec = 1 year,
 604800 sec = 1 week
 86400 sec = 1 day
+R_ISCO = 6*G*M/(c*c)
 """
