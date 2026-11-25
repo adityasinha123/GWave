@@ -32,6 +32,44 @@ def doppler_phase(f_gw, t, theta_s, phi_s, t0=0.0):
     return 2 * np.pi * f_gw * (AU / C) * np.sin(theta_s) * np.cos(2 * np.pi * (t + t0) / YEAR - phi_s)
 
 
+def unit_vector(theta, phi):
+    """Unit vector(s) for polar angle theta and azimuth phi; shape (..., 3)."""
+    theta, phi = np.broadcast_arrays(np.asarray(theta, float), np.asarray(phi, float))
+    return np.stack([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)], axis=-1)
+
+
+def lisa_frame(t, phi0=0.0, sigma0=0.0):
+    """
+    LISA's detector frame in ecliptic coordinates as it orbits (Cutler 1998). Returns
+    (x_d, y_d, z_d), each of shape (len(t), 3). z_d is the normal to the constellation,
+    tilted 60 degrees from the ecliptic normal; x_d, y_d are the arms of the equivalent
+    90-degree detector I. The constellation orbits the Sun once a year (orbital phase
+    phi0 + 2 pi t / yr) and cartwheels about z_d once a year in the opposite sense.
+    """
+    t = np.atleast_1d(np.asarray(t, dtype=float))
+    pb = phi0 + 2 * np.pi * t / YEAR
+    radial = np.stack([np.cos(pb), np.sin(pb), np.zeros_like(pb)], axis=-1)
+    along = np.stack([-np.sin(pb), np.cos(pb), np.zeros_like(pb)], axis=-1)
+    z_d = 0.5 * np.array([0.0, 0.0, 1.0]) - np.sqrt(3) / 2 * radial
+    f2 = np.cross(z_d, along)
+    sig = (sigma0 - 2 * np.pi * t / YEAR)[:, None]
+    x_d = np.cos(sig) * along + np.sin(sig) * f2
+    y_d = np.cross(z_d, x_d)
+    return x_d, y_d, z_d
+
+
+def lisa_detector_tensors(t, phi0=0.0, sigma0=0.0):
+    """
+    Response tensors D^I, D^II (shape (len(t), 3, 3)) with h_A = D^A_ij h_ij. They include
+    the sqrt(3)/2 factor for the 60-degree arms; detector II is detector I rotated by 45 degrees.
+    """
+    x, y, _ = lisa_frame(t, phi0, sigma0)
+    k = np.sqrt(3) / 2
+    d1 = 0.5 * k * (np.einsum("ni,nj->nij", x, x) - np.einsum("ni,nj->nij", y, y))
+    d2 = 0.5 * k * (np.einsum("ni,nj->nij", x, y) + np.einsum("ni,nj->nij", y, x))
+    return d1, d2
+
+
 def lisa_strain(binary, t, distance_mpc, iota, theta=0.0, phi=0.0, psi=0.0,
                 theta_s=None, phi_s=None, doppler=True, pn_order=2):
     """

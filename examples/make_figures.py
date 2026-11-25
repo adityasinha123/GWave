@@ -140,8 +140,42 @@ def fig_massive_graviton():
     save(fig, "massive_graviton.png")
 
 
+# 5. EMRIs: the black hole's spin drags the orbital plane around --------------------------
+def fig_emri():
+    from gwave import emri as em
+
+    # "EMRI Event 1" of the dissertation (Sec. 4.4.1)
+    z = 1.0
+    kw = dict(nu0=5e-4, distance_mpc=gwave.cosmology.luminosity_distance(z), theta_s=np.pi / 4,
+              phi_s=np.pi / 4, theta_k=np.pi / 3, phi_k=np.pi / 4, z=z, envelope=True)
+    t = np.arange(0, 5 * 86400, 30.0)
+    day = 86400.0
+
+    fig, (ax, axe) = plt.subplots(1, 2, figsize=(12, 4.2), gridspec_kw={"width_ratios": [1, 1.5], "wspace": 0.2})
+    ts, h1, _, env1, _ = em.lisa_emri(em.EMRI(1, 1e6, chi=0.1, lam=np.pi / 6), np.arange(0, 3 * 3600, 5.0), **kw)
+    ax.plot(ts / 3600, h1 * 1e24, color=TEAL, lw=1.1)
+    ax.plot(ts / 3600, env1 * 1e24, color=ORANGE, lw=1.2, ls=(0, (4, 2)), label="envelope")
+    ax.set_xlabel("time [hours]")
+    ax.set_ylabel(r"LISA strain $h_I\ [10^{-24}]$")
+    ax.set_title("1 + $10^6\\,M_\\odot$ at z = 1, first 3 hours")
+    ax.set_ylim(-1.0, 1.3)
+    ax.legend(loc="upper right")
+
+    cols = [MUTED, TEAL, OCHRE, ORANGE, INK]
+    for chi, col in zip([1e-4, 0.01, 0.02, 0.05, 0.1], cols):
+        tt, _, _, e, _ = em.lisa_emri(em.EMRI(1, 1e6, chi=chi, lam=np.pi / 6), t, **kw)
+        axe.plot(tt / day, e * 1e24, color=col, label=f"$\\chi$ = {chi:g}")
+    axe.set_xlabel("time [days]")
+    axe.set_ylabel(r"amplitude of $h_I\ [10^{-24}]$")
+    axe.set_title("Spin precesses the orbital plane and modulates the signal (5 days)")
+    axe.set_ylim(None, axe.get_ylim()[1] + 0.06)
+    axe.legend(loc="upper left", ncol=5, fontsize=9)
+    save(fig, "emri.png")
+
+
 if __name__ == "__main__":
     fig_chirp()
     fig_dephasing()
     fig_antenna()
     fig_massive_graviton()
+    fig_emri()

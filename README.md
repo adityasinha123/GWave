@@ -1,7 +1,8 @@
 # GWave
 
-Gravitational-wave signals from inspiralling compact binaries, for ground-based (LIGO) and
-space-based (LISA) detectors, and how a massive graviton would distort them.
+Gravitational-wave signals from inspiralling compact binaries and extreme-mass-ratio inspirals,
+for ground-based (LIGO) and space-based (LISA) detectors, and how a massive graviton would
+distort them.
 
 ![Newtonian vs 2PN inspiral of a 30+30 solar-mass binary](figures/chirp.png)
 
@@ -95,6 +96,26 @@ detector I rotated by 45°. It also includes the Doppler phase from LISA's orbit
 $\Phi_D = 2\pi f\,(R/c)\sin\theta_s\cos(2\pi t/\mathrm{yr} - \phi_s)$. The constellation's slow
 rotation is not modelled, so signals should be short compared with a year.
 
+## Extreme-mass-ratio inspirals
+
+`gwave.emri` follows a compact object of mass $\mu$ around a spinning black hole of mass
+$M \gg \mu$, in the analytic-kludge model of
+[Barack & Cutler (2004)](https://doi.org/10.1103/PhysRevD.69.082005) restricted to circular
+orbits. With $x = (2\pi M\nu)^{2/3}$, spin $\chi = S/M^2$ and $\lambda$ the angle between the orbital
+angular momentum and the spin ($G = c = 1$):
+
+$$\dot\nu = \frac{96}{10\pi}\frac{\mu}{M^3}(2\pi M\nu)^{11/3}\Big[1 + \tfrac{1273}{336}x - \tfrac{73}{12}(2\pi M\nu)\,\chi\cos\lambda\Big],$$
+
+$$\dot{\tilde\gamma} = 6\pi\nu\,x\,(1 + \tfrac{13}{2}x) - 24\pi^2\nu^2 M\chi\cos\lambda, \qquad
+\dot\alpha = 8\pi^2\nu^2 M\chi .$$
+
+The last term is Lense–Thirring precession: the black hole's spin drags the orbital plane around
+it. The wave is the quadrupole field of the orbit, built from vectors and projected onto LISA's arms
+as they orbit and cartwheel through the year. The precessing plane modulates the signal, more
+strongly the faster the black hole spins:
+
+![EMRI signal and its spin-dependent modulation](figures/emri.png)
+
 ## Usage
 
 ```python
@@ -107,12 +128,20 @@ print(b.chirp_mass, b.f_isco)              # 1.185 M_sun, ~1.6 kHz
 t, h = gwave.inspiral(b, distance_mpc=40, iota=0.4, f_low=30, sample_rate=4096)
 f = gwave.gw_frequency(b, t)               # GW frequency along the signal
 
+import numpy as np
+
 # a GW150914-like source at z = 0.09, with and without a massive graviton
 from gwave import massive_gravity as mg
 t, h_gr, h_mg = mg.massive_inspiral(Binary(36, 29), z=0.09, lambda_g=1e16, f_low=20)
 
+# an EMRI seen by LISA (dissertation's "EMRI Event 1")
+from gwave import emri
+system = emri.EMRI(mu=1, M=1e6, chi=0.1, lam=np.pi / 6)
+t, hI, hII = emri.lisa_emri(system, np.arange(0, 5 * 86400, 10.0), nu0=5e-4,
+                            distance_mpc=gwave.cosmology.luminosity_distance(1.0),
+                            theta_s=np.pi / 4, phi_s=np.pi / 4, theta_k=np.pi / 3, phi_k=np.pi / 4, z=1.0)
+
 # LISA, ten years before merger
-import numpy as np
 from gwave import lisa
 b = Binary(10, 100).redshifted(2)
 t = -10 * gwave.YEAR + np.arange(0, 86400, 5.0)
@@ -124,7 +153,8 @@ All masses are in solar masses, distances in Mpc, times in seconds and frequenci
 ```
 gwave/inspiral.py         Binary, PN frequency and phase, polarizations, antenna pattern, strain
 gwave/cosmology.py        luminosity distance d_L(z) and the graviton distance D(z)
-gwave/lisa.py             LISA's two detectors and the orbital Doppler phase
+gwave/lisa.py             LISA's two detectors, its orbiting frame, the orbital Doppler phase
+gwave/emri.py             extreme-mass-ratio inspirals (analytic kludge, circular orbits)
 gwave/massive_gravity.py  massive-graviton phase, group delay, and time-domain propagation
 examples/make_figures.py  regenerates every figure in this README
 tests/                    physics checks (see below)
@@ -149,6 +179,10 @@ The tests check physics, not just that the code runs:
   Hubble's law at low redshift.
 - **Massive graviton.** The group delay is the derivative of the phase, the massless limit
   returns GR, and the time-domain propagation matches an independent FFT calculation.
+- **EMRIs and LISA.** LISA's orbiting frame reproduces Cutler's closed-form angles to machine
+  precision. The EMRI frequency evolution reduces to the quadrupole chirp, and the precession
+  rates match the dissertation's equations. The vector-built wave equals the textbook
+  $F_+h_+ + F_\times h_\times$, and spin modulates the amplitude only when it should.
 
 ## History
 
@@ -158,17 +192,21 @@ massive-graviton propagation. The final versions were lost in a computer crash. 
 survives in this repository's history under the tag `msc-2019`, and the final programs are
 printed in the dissertation's appendix.
 
-In 2026 I rebuilt the package from those programs with help from an AI coding assistant
+In 2026 I rebuilt the package from those programs and the dissertation's equations with help from an AI coding assistant
 (Claude). The rebuild:
 
 - fixed a total-mass bug (operator precedence) and a term and sign error in the LIGO antenna
   pattern;
+- fixed an exponent in the EMRI periapsis-advance rate (the code had $x^{8/3}$ where
+  eq. 4.46 has $x^{2/3}$);
 - replaced the FFT-based massive-graviton step with a time-domain method that needs no
   windowing;
+- rebuilt the EMRI and LISA geometry from vectors, because the printed code is truncated at the
+  page margin;
 - added the tests and figures.
 
 The physics, the choice of formulas and the structure of the calculation follow the
-dissertation. The extreme-mass-ratio (EMRI) model has not been ported yet.
+dissertation.
 
 ## License
 

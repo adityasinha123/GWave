@@ -5,8 +5,9 @@ gwave: gravitational-wave signals from inspiralling compact binaries.
     gwave.cosmology        luminosity distance and the massive-graviton distance D(z)
     gwave.lisa             simplified LISA response with the orbital Doppler phase
     gwave.massive_gravity  propagation with a massive graviton
+    gwave.emri             extreme-mass-ratio inspirals (analytic kludge, circular orbits)
 """
 from .constants import AU, C, MPC, T_SUN, YEAR
 from .inspiral import (Binary, antenna_pattern, gw_cycles, gw_frequency, gw_phase, inspiral,
                        inspiral_times, polarizations, strain, theta)
-from . import cosmology, lisa, massive_gravity
+from . import cosmology, emri, lisa, massive_gravity
