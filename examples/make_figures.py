@@ -105,7 +105,43 @@ def fig_antenna():
     save(fig, "antenna_pattern.png")
 
 
+# 4. a massive graviton compresses the chirp ----------------------------------------------
+def fig_massive_graviton():
+    from gwave import massive_gravity as mg
+
+    fig, (ax, axp) = plt.subplots(1, 2, figsize=(12, 4.2), gridspec_kw={"width_ratios": [1.5, 1], "wspace": 0.22})
+
+    b, z, lam = Binary(10, 10), 0.1, 1e16
+    t, h_gr, h_m = mg.massive_inspiral(b, z, lam, f_low=30, sample_rate=8192)
+    sel = (t > -1.2) & (t < -0.02)
+    ax.plot(t[sel], h_gr[sel] * 1e22, color=TEAL, alpha=0.8, label="GR (massless graviton)")
+    ax.plot(t[sel], h_m[sel] * 1e22, color=ORANGE, label=f"$\\lambda_g$ = {lam:.0e} m")
+    ax.set_xlabel("time [s]")
+    ax.set_ylabel(r"strain $h\ [10^{-22}]$")
+    ax.set_title("A massive graviton compresses the chirp  (10 + 10 $M_\\odot$, z = 0.1)")
+    ax.legend(loc="upper left", ncol=2)
+    ax.text(0.99, 0.03, f"$m_g$ = {mg.graviton_mass_ev(lam):.1e} eV, already excluded by LIGO",
+            transform=ax.transAxes, ha="right", fontsize=9, color=MUTED)
+
+    f = np.geomspace(1e-5, 3e3, 400)
+    for lam_, col in [(1e16, BRICK), (1e17, ORANGE), (1e18, OCHRE)]:
+        axp.loglog(f, np.abs(mg.phase_shift(f, 1.0, lam_)), color=col,
+                   label=f"$\\lambda_g$ = $10^{{{int(np.log10(lam_))}}}$ m")
+    axp.axvspan(1e-4, 1e-1, color=TEAL, alpha=0.10)
+    axp.axvspan(10, 1e3, color=ORANGE, alpha=0.10)
+    axp.text(3e-3, 3e-2, "LISA", color=TEAL, ha="center")
+    axp.text(100, 3e-2, "LIGO", color=ORANGE, ha="center")
+    axp.axhline(1, color=MUTED, ls=(0, (3, 3)), lw=1)
+    axp.set_ylim(1e-2, 1e16)
+    axp.set_xlabel("GW frequency [Hz]")
+    axp.set_ylabel(r"$|\Psi_g(f)|$ [rad]")
+    axp.set_title("Phase accumulated from z = 1")
+    axp.legend(loc="upper right")
+    save(fig, "massive_graviton.png")
+
+
 if __name__ == "__main__":
     fig_chirp()
     fig_dephasing()
     fig_antenna()
+    fig_massive_graviton()

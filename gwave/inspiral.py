@@ -1,5 +1,5 @@
 """
-gwave: post-Newtonian gravitational-wave signals from inspiralling compact binaries.
+Post-Newtonian inspiral of a compact binary and its signal in an L-shaped detector.
 
 Time-domain "restricted" waveforms: the phase is evolved to 0PN (Newtonian) or 2PN order
 in the dimensionless time variable Theta of L. Blanchet, Living Rev. Relativ. 17, 2 (2014);
@@ -7,15 +7,16 @@ the amplitude is kept at leading (quadrupole) order.
 
 All masses are in solar masses, distances in Mpc, times in seconds, frequencies in Hz.
 Internally masses are converted to seconds via T_sun = G M_sun / c^3.
+
+For a source at redshift z, every mass scale in the signal is redshifted, M -> (1+z) M,
+and the distance is the luminosity distance: use Binary.redshifted(z) together with
+gwave.cosmology.luminosity_distance(z).
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
-# --- constants -------------------------------------------------------------------------
-C = 299_792_458.0                 # speed of light [m/s] (exact)
-T_SUN = 4.925490947641267e-06     # G M_sun / c^3 [s] (IAU nominal GM_sun)
-MPC = 3.085677581491367e22        # megaparsec [m]
+from .constants import C, MPC, T_SUN
 
 
 # --- the binary ------------------------------------------------------------------------
@@ -24,6 +25,10 @@ class Binary:
     """Two point masses m1, m2 in solar masses."""
     m1: float
     m2: float
+
+    def redshifted(self, z):
+        """The same binary as seen from redshift z: detector-frame masses (1+z) m."""
+        return replace(self, m1=self.m1 * (1 + z), m2=self.m2 * (1 + z))
 
     @property
     def total_mass(self):
@@ -98,10 +103,14 @@ def gw_phase(binary, t, tc=0.0, phi_c=0.0, pn_order=2):
 
 
 # --- waveform ------------------------------------------------------------------------------
-def polarizations(binary, t, distance_mpc, iota, tc=0.0, phi_c=0.0, pn_order=2):
-    """Restricted-PN polarizations h_+(t), h_x(t) for inclination iota (radians)."""
+def polarizations(binary, t, distance_mpc, iota, tc=0.0, phi_c=0.0, pn_order=2,
+                  extra_phase=0.0):
+    """
+    Restricted-PN polarizations h_+(t), h_x(t) for inclination iota (radians).
+    extra_phase is added to the GW phase (e.g. the Doppler phase of a moving detector).
+    """
     f = gw_frequency(binary, t, tc, pn_order)
-    phase = gw_phase(binary, t, tc, phi_c, pn_order)
+    phase = gw_phase(binary, t, tc, phi_c, pn_order) + extra_phase
     r_s = distance_mpc * MPC / C                                  # distance in seconds
     h0 = 4.0 * binary.Mc_s**(5 / 3) * (np.pi * f)**(2 / 3) / r_s
     h_plus = h0 * 0.5 * (1 + np.cos(iota)**2) * np.cos(phase)
@@ -145,18 +154,31 @@ def gw_cycles(binary, f_low, f_high=None, pn_order=2, n=400_000):
     return grid, (np.interp(grid, f, phase) - np.interp(f_low, f, phase)) / (2 * np.pi)
 
 
-def inspiral(binary, distance_mpc, iota=0.0, f_low=20.0, sample_rate=8192.0,
-             theta_sky=0.0, phi_sky=0.0, psi=0.0, pn_order=2):
+def inspiral_times(binary, f_low, sample_rate, pn_order=2):
     """
-    Convenience wrapper: sample the strain from GW frequency f_low up to the ISCO.
-    Returns (t, h) with coalescence at t = 0.
+    Sample times from GW frequency f_low up to the ISCO (or up to where the truncated PN
+    series stops increasing), with coalescence at t = 0.
     """
-    t_start = -binary.time_to_coalescence(f_low)
-    t = np.arange(t_start, 0.0, 1.0 / sample_rate)
+    t = np.arange(-binary.time_to_coalescence(f_low), 0.0, 1.0 / sample_rate)
     f = gw_frequency(binary, t, pn_order=pn_order)
-    # stop at the ISCO, or where the truncated PN series stops increasing
     keep = (f < binary.f_isco) & np.concatenate([[True], np.diff(f) > 0])
     stop = np.argmin(keep) if not keep.all() else len(t)
-    t = t[:stop]
+    return t[:stop]
+
+
+def inspiral(binary, distance_mpc=None, iota=0.0, f_low=20.0, sample_rate=8192.0,
+             theta_sky=0.0, phi_sky=0.0, psi=0.0, pn_order=2, z=None):
+    """
+    Convenience wrapper: the strain of an L-shaped detector from f_low up to the ISCO.
+    Give either distance_mpc (a nearby source) or z (masses are taken as source-frame,
+    redshifted, and the luminosity distance is computed). Returns (t, h), coalescence at t = 0.
+    """
+    if z is not None:
+        from .cosmology import luminosity_distance
+        binary = binary.redshifted(z)
+        distance_mpc = luminosity_distance(z) if distance_mpc is None else distance_mpc
+    if distance_mpc is None:
+        raise ValueError("give distance_mpc or z")
+    t = inspiral_times(binary, f_low, sample_rate, pn_order)
     h = strain(binary, t, distance_mpc, iota, theta_sky, phi_sky, psi, pn_order=pn_order)
     return t, h

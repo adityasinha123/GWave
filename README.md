@@ -1,17 +1,18 @@
 # GWave
 
-Post-Newtonian gravitational-wave signals from inspiralling compact binaries, in a single small
-Python module.
+Gravitational-wave signals from inspiralling compact binaries, for ground-based (LIGO) and
+space-based (LISA) detectors, and how a massive graviton would distort them.
 
 ![Newtonian vs 2PN inspiral of a 30+30 solar-mass binary](figures/chirp.png)
 
 `gwave` builds the time-domain strain an interferometer sees from a binary of two point masses
 during its inspiral. The orbital phase is evolved to Newtonian (0PN) or second post-Newtonian (2PN)
 order, the amplitude is kept at leading (quadrupole) order, and the signal is projected onto
-an L-shaped detector through its antenna pattern. It started as part of my
-[M.Sc. dissertation](https://imperialcollegelondon.app.box.com/s/gs08vpfud1nobnqrsbrmj6vsoplzv84c)
-at Imperial College London on gravitational waves in massive gravity, and it is written to be
-read as much as run.
+an L-shaped detector or onto LISA. Sources can sit at cosmological distances, and the signal
+can be propagated with a massive graviton. It is the code behind my
+[M.Sc. dissertation](https://imperialcollegelondon.app.box.com/s/gs08vpfud1nobnqrsbrmj6vsoplzv84c),
+*Modelling Gravitational Waves in a Massive Gravity Theory* (Imperial College London, 2019),
+rewritten to be read as much as run.
 
 ## Physics
 
@@ -39,9 +40,10 @@ $$F_+ = \tfrac12(1+\cos^2\theta)\cos 2\phi\cos 2\psi - \cos\theta\sin 2\phi\sin 
 F_\times = \tfrac12(1+\cos^2\theta)\cos 2\phi\sin 2\psi + \cos\theta\sin 2\phi\cos 2\psi .$$
 
 The series is cut off at the Schwarzschild ISCO, $f_{\rm ISCO} = c^3/(6^{3/2}\pi G M)$, where the
-inspiral description stops being trustworthy. Merger and ringdown are not modelled, and
-cosmological redshift is ignored, so the distance is the luminosity distance of a nearby
-($z \ll 1$) source.
+inspiral description stops being trustworthy. Merger and ringdown are not modelled.
+
+For a source at redshift $z$ every mass scale is redshifted, $\mathcal{M} \to (1+z)\mathcal{M}$,
+and $r$ becomes the luminosity distance $d_L(z)$ of a flat ΛCDM universe (Planck 2015 parameters).
 
 ## Why the post-Newtonian terms matter
 
@@ -60,6 +62,39 @@ The 2PN cycle counts from 10 Hz to the ISCO (16,275 for 1.4+1.4 $M_\odot$, 3,619
 The total response $\sqrt{F_+^2 + F_\times^2}$ does not depend on the polarization angle
 $\psi$. It is largest overhead and vanishes in the detector plane along the bisectors of the arms.
 
+## A massive graviton
+
+If the graviton has a mass $m_g$, with Compton wavelength $\lambda_g = h/(m_g c)$, its dispersion
+relation $E^2 = p^2c^2 + m_g^2c^4$ makes low frequencies travel slightly more slowly. Over a
+cosmological distance each frequency picks up a phase
+([Will 1998](https://doi.org/10.1103/PhysRevD.57.2061))
+
+$$\Psi_g(f) = -\frac{\pi c\, D(z)}{(1+z)\,\lambda_g^2 f}, \qquad
+D(z) = \frac{(1+z)\,c}{H_0}\int_0^z \frac{dz'}{(1+z')^2 E(z')},$$
+
+so the frequency $f$ arrives late by $\Delta t(f) = \frac{1}{2\pi}\frac{d\Psi_g}{df} \propto f^{-2}$.
+The early, low-frequency part of a chirp is delayed most, and the signal is compressed:
+
+![Massive graviton waveform and accumulated phase](figures/massive_graviton.png)
+
+Because $\Psi_g \propto 1/f$, the effect is largest at low frequencies and large distances, which
+is why LISA sources would bound $m_g$ far more tightly than LIGO ones.
+
+`gwave.massive_gravity.propagate` applies this in the time domain. Each sample is moved to its
+arrival time, its phase is shifted by $-2\Psi_g(f)$ (the phase and group velocities differ),
+and its amplitude is rescaled by the local compression. This avoids the wrap-around and edge
+artefacts of doing it with an FFT of a finite signal, the problem the dissertation worked
+around with windowing. A test checks it against a carefully zero-padded FFT calculation: the two
+agree to better than 1%, while the massive and massless signals differ by order 100%.
+
+## LISA
+
+`gwave.lisa` gives the two effective detectors formed by LISA's three arms,
+$h_{I,II} = \frac{\sqrt3}{2}(F^{I,II}_+ h_+ + F^{I,II}_\times h_\times)$, where detector II is
+detector I rotated by 45°. It also includes the Doppler phase from LISA's orbit around the Sun,
+$\Phi_D = 2\pi f\,(R/c)\sin\theta_s\cos(2\pi t/\mathrm{yr} - \phi_s)$. The constellation's slow
+rotation is not modelled, so signals should be short compared with a year.
+
 ## Usage
 
 ```python
@@ -71,14 +106,28 @@ print(b.chirp_mass, b.f_isco)              # 1.185 M_sun, ~1.6 kHz
 
 t, h = gwave.inspiral(b, distance_mpc=40, iota=0.4, f_low=30, sample_rate=4096)
 f = gwave.gw_frequency(b, t)               # GW frequency along the signal
+
+# a GW150914-like source at z = 0.09, with and without a massive graviton
+from gwave import massive_gravity as mg
+t, h_gr, h_mg = mg.massive_inspiral(Binary(36, 29), z=0.09, lambda_g=1e16, f_low=20)
+
+# LISA, ten years before merger
+import numpy as np
+from gwave import lisa
+b = Binary(10, 100).redshifted(2)
+t = -10 * gwave.YEAR + np.arange(0, 86400, 5.0)
+h_I, h_II = lisa.lisa_strain(b, t, gwave.cosmology.luminosity_distance(2), iota=1.0, theta=0.8)
 ```
 
 All masses are in solar masses, distances in Mpc, times in seconds and frequencies in Hz.
 
 ```
-gwave.py                  the whole model: Binary, frequency, phase, polarizations, antenna pattern
+gwave/inspiral.py         Binary, PN frequency and phase, polarizations, antenna pattern, strain
+gwave/cosmology.py        luminosity distance d_L(z) and the graviton distance D(z)
+gwave/lisa.py             LISA's two detectors and the orbital Doppler phase
+gwave/massive_gravity.py  massive-graviton phase, group delay, and time-domain propagation
 examples/make_figures.py  regenerates every figure in this README
-tests/test_gwave.py       physics checks (see below)
+tests/                    physics checks (see below)
 ```
 
 ## Running
@@ -96,15 +145,30 @@ The tests check physics, not just that the code runs:
   BNS, NSBH and BBH systems.
 - **Antenna pattern invariance.** $F_+^2 + F_\times^2$ is independent of $\psi$.
 - **Reference values.** Standard chirp masses, ISCO frequencies and strain amplitudes.
+- **Cosmology.** $d_L$ and $D$ reproduce their closed forms in a matter-only universe and
+  Hubble's law at low redshift.
+- **Massive graviton.** The group delay is the derivative of the phase, the massless limit
+  returns GR, and the time-domain propagation matches an independent FFT calculation.
 
 ## History
 
-I wrote the first version in 2019, during my M.Sc. at Imperial, as a single script. It is
-preserved in this repository's history under the tag `msc-2019`. In 2026 I restructured it
-into the tested module above with help from an AI coding assistant (Claude). That pass
-fixed a total-mass bug and a sign error in the antenna pattern, connected the 2PN phase,
-and added the tests and figures. The physics and the choice of formulas are from the
-original.
+I wrote the original code in 2019 for my M.Sc. dissertation at Imperial: five scripts covering
+LIGO and LISA signals, an analytic-kludge model of extreme-mass-ratio inspirals, and
+massive-graviton propagation. The final versions were lost in a computer crash. An early draft
+survives in this repository's history under the tag `msc-2019`, and the final programs are
+printed in the dissertation's appendix.
+
+In 2026 I rebuilt the package from those programs with help from an AI coding assistant
+(Claude). The rebuild:
+
+- fixed a total-mass bug (operator precedence) and a term and sign error in the LIGO antenna
+  pattern;
+- replaced the FFT-based massive-graviton step with a time-domain method that needs no
+  windowing;
+- added the tests and figures.
+
+The physics, the choice of formulas and the structure of the calculation follow the
+dissertation. The extreme-mass-ratio (EMRI) model has not been ported yet.
 
 ## License
 
@@ -117,3 +181,9 @@ MIT. See [LICENSE](LICENSE).
 - B. S. Sathyaprakash and B. F. Schutz, *Physics, Astrophysics and Cosmology with Gravitational
   Waves*, [Living Rev. Relativ. 12, 2 (2009)](https://doi.org/10.12942/lrr-2009-2).
 - M. Maggiore, *Gravitational Waves, Vol. 1: Theory and Experiments*, Oxford University Press (2008).
+- C. M. Will, *Bounding the mass of the graviton using gravitational wave observations of
+  inspiralling compact binaries*, [Phys. Rev. D 57, 2061 (1998)](https://doi.org/10.1103/PhysRevD.57.2061).
+- C. Cutler, *Angular resolution of the LISA gravitational wave detector*,
+  [Phys. Rev. D 57, 7089 (1998)](https://doi.org/10.1103/PhysRevD.57.7089).
+- L. Barack and C. Cutler, *LISA capture sources: Approximate waveforms, signal-to-noise
+  ratios, and parameter estimation accuracy*, [Phys. Rev. D 69, 082005 (2004)](https://doi.org/10.1103/PhysRevD.69.082005).
